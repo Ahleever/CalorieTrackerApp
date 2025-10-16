@@ -11,19 +11,12 @@ except Exception:
 
 # Database Manager Class
 class DatabaseManager:
-    """Handles all interaction with the SQLite database for users and entries."""
     def __init__(self, db_name="calorie_tracker.db"):
-        self.conn = sqlite3.connect(db_name)
+        self.conn = sqlite3.connect(db_name) 
         self.cursor = self.conn.cursor()
         self.create_tables()
         self.ensure_date_column()
         
-        db_path = os.path.abspath(db_name)
-        print("---------------------------------------------")
-        print(f"Database connected and tables checked.")
-        print(f"DATABASE FILE LOCATION: {db_path}")
-        print("---------------------------------------------")
-
     def create_tables(self):
         self.cursor.execute(
             "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)"
@@ -40,10 +33,6 @@ class DatabaseManager:
             self.cursor.execute("ALTER TABLE entries ADD COLUMN entry_date TEXT")
             self.conn.commit()
             
-            today_str = date.today().isoformat()
-            self.cursor.execute("UPDATE entries SET entry_date = ? WHERE entry_date IS NULL OR entry_date = ''", (today_str,))
-            self.conn.commit()
-
     def hash_password(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
 
@@ -84,7 +73,6 @@ class DatabaseManager:
         return [{'meal': row[0], 'calories': row[1]} for row in self.cursor.fetchall()]
 
     def load_daily_totals(self, user_id, limit=30):
-        """Return list of {'date': YYYY-MM-DD, 'total': int} ordered desc by date."""
         self.cursor.execute(
             """
             SELECT entry_date, SUM(calories) as total
@@ -100,7 +88,6 @@ class DatabaseManager:
 
 # Authentication Window Class
 class AuthWindow:
-    """Handles the user login and registration interface."""
     def __init__(self, master, db, login_success_callback):
         self.master = master
         self.db = db
@@ -174,8 +161,6 @@ class AuthWindow:
 
 # Main Application Class
 class CalorieTrackerApp:
-    """The main calorie counter GUI, displayed only after successful login."""
-
     def __init__(self, master):
         self.master = master
         self.db = DatabaseManager()
@@ -193,7 +178,7 @@ class CalorieTrackerApp:
         self.current_user_id = None
         self.current_username = None
         self.master.title("Calorie Counter")
-        self.master.geometry("200x200") 
+        self.master.geometry("200x200")
         self.show_auth_window()
 
     def change_day(self, delta_days):
@@ -203,7 +188,7 @@ class CalorieTrackerApp:
         if hasattr(self, "date_picker") and self.date_picker is not None:
             self.date_picker.set_date(self.selected_date)
         self.update_display()
-        
+
     def show_main_tracker(self, user_id, username):
         self.current_user_id = user_id
         self.current_username = username
@@ -219,6 +204,7 @@ class CalorieTrackerApp:
             "Apple",
             "Banana"
         ]
+
         for widget in self.master.winfo_children():
             widget.destroy()
 
@@ -235,9 +221,10 @@ class CalorieTrackerApp:
         main_content_frame.grid_columnconfigure(0, weight=1)
         main_content_frame.grid_rowconfigure(2, weight=1)
 
+        #Header for User Info and Logout Button
         header_frame = tk.Frame(main_content_frame, bg="#e0e0e0")
         header_frame.grid(row=0, column=0, padx=0, pady=(0, 5), sticky="ew")
-        header_frame.grid_columnconfigure(0, weight=1) 
+        header_frame.grid_columnconfigure(0, weight=1)
         
         user_label = tk.Label(header_frame, text=f"User: {username} | ID: {user_id}", bg="#e0e0e0", font=('Arial', 9, 'italic'))
         user_label.grid(row=0, column=0, sticky="w", padx=5)
@@ -251,19 +238,20 @@ class CalorieTrackerApp:
         
         date_row = 0
         date_frame = tk.Frame(input_frame, bg="#e0e0e0")
-        date_frame.grid(row=date_row, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        date_frame.grid_columnconfigure(1, weight=1)
+        date_frame.grid(row=date_row, column=0, columnspan=3, sticky="ew", pady=(0, 8))
+        date_frame.grid_columnconfigure(0, weight=1)
+        date_frame.grid_columnconfigure(2, weight=1)
+        date_frame.grid_columnconfigure(3, weight=1)
 
         tk.Label(date_frame, text="Date:", bg="#e0e0e0", font=('Arial', 10, 'bold')).grid(row=0, column=0, padx=(0,8))
         
-
         tk.Button(date_frame, text="◀ Prev", command=lambda: self.change_day(-1)).grid(row=0, column=1, sticky="w")
         
         if DateEntry is not None:
             self.date_picker = DateEntry(date_frame, width=12, background='darkblue', foreground='white',
                                          borderwidth=2, date_pattern="yyyy-mm-dd")
             self.date_picker.set_date(self.selected_date)
-            self.date_picker.grid(row=0, column=2, padx=8)
+            self.date_picker.grid(row=0, column=2, padx=12)
             def _on_date_change(*_):
                 self.selected_date = self.date_picker.get_date()
                 self.update_display()
@@ -344,11 +332,6 @@ class CalorieTrackerApp:
         # Exercise Sidebar
         sidebar_frame = tk.Frame(self.master, padx=10, pady=10, bg="#eaf3ff", relief=tk.RIDGE, bd=2)
         sidebar_frame.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
-        sidebar_frame.grid_rowconfigure(len(recommendations)+4, weight=1)
-
-        tk.Label(sidebar_frame, text="🔥 Daily Exercise Goal 🔥", 
-                 font=('Arial', 12, 'bold'), fg="#333333", bg="#eaf3ff").grid(row=0, column=0, sticky='ew', pady=(0, 10))
-        
         recommendations = [
             ("Walk 30 min", "150 kcal"),
             ("1 hour Strength Training", "300 kcal"),
@@ -357,6 +340,10 @@ class CalorieTrackerApp:
             ("Running 5k", "400 kcal"),
             ("Cycling (Moderate)", "350 kcal")
         ]
+        sidebar_frame.grid_rowconfigure(len(recommendations)+4, weight=1)
+
+        tk.Label(sidebar_frame, text="🔥 Daily Exercise Goal 🔥", 
+                 font=('Arial', 12, 'bold'), fg="#333333", bg="#eaf3ff").grid(row=0, column=0, sticky='ew', pady=(0, 10))
         
         for i, (name, calories) in enumerate(recommendations):
             item_frame = tk.Frame(sidebar_frame, bg="#ffffff", padx=10, pady=8, relief=tk.FLAT)
