@@ -3,16 +3,19 @@ from tkinter import messagebox, ttk
 import sqlite3
 import hashlib
 import os
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates 
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
 try:
-    from tkcalendar import DateEntry
+    from tkcalendar import DateEntry 
 except Exception:
     DateEntry = None
-# Constants
+
 KG_PER_LB = 0.453592
 M_PER_INCH = 0.0254
 
-# Profile Calculator Class
 class ProfileCalculator:
     """Calculates BMI and TDEE/BMR based on user profile metrics."""
 
@@ -27,7 +30,8 @@ class ProfileCalculator:
         try:
             self.age = int(age)
             self.height_m = float(height_in) * M_PER_INCH
-            self.weight_kg = float(weight_lb) * KG_PER_LB
+            self.weight_lb = float(weight_lb)
+            self.weight_kg = self.weight_lb * KG_PER_LB
             self.sex = sex
             self.activity_level = activity_level
         except (ValueError, TypeError):
@@ -55,7 +59,6 @@ class ProfileCalculator:
         factor = self.ACTIVITY_FACTORS.get(self.activity_level, 1.2)
         return round(bmr * factor, 0)
 
-# Database Manager Class
 class DatabaseManager:
     def __init__(self, db_name="calorie_tracker.db"):
         self.conn = sqlite3.connect(db_name) 
@@ -71,6 +74,16 @@ class DatabaseManager:
         self.cursor.execute(
             "CREATE TABLE IF NOT EXISTS entries (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, meal TEXT NOT NULL, calories INTEGER NOT NULL, entry_date TEXT, FOREIGN KEY (user_id) REFERENCES users(id))" 
         )
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS WeightLogs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                log_date TEXT NOT NULL,
+                weight_lb REAL NOT NULL,
+                UNIQUE(user_id, log_date),
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
         self.conn.commit()
 
     def ensure_date_column(self):
@@ -88,6 +101,14 @@ class DatabaseManager:
         user_exists = self.cursor.fetchone()
         
         if user_exists:
+            user_id = user_exists[0]
+            if not self.load_weight_data(user_id):
+                today = date.today()
+                self.log_weight(user_id, 178.0, (today - timedelta(days=20)).isoformat())
+                self.log_weight(user_id, 177.5, (today - timedelta(days=15)).isoformat())
+                self.log_weight(user_id, 176.0, (today - timedelta(days=10)).isoformat())
+                self.log_weight(user_id, 175.5, (today - timedelta(days=5)).isoformat())
+                self.log_weight(user_id, 175.0, today.isoformat())
             return 
             
         user_id = self.register_user(username, password)
@@ -114,6 +135,12 @@ class DatabaseManager:
         self.save_entry(user_id, "Scrambled Eggs", 450, day2.isoformat())
         self.save_entry(user_id, "Tuna Sandwich", 550, day2.isoformat())
         self.save_entry(user_id, "Pasta Dinner", 800, day2.isoformat())
+
+        self.log_weight(user_id, 178.0, (today - timedelta(days=20)).isoformat())
+        self.log_weight(user_id, 177.5, (today - timedelta(days=15)).isoformat())
+        self.log_weight(user_id, 176.0, (today - timedelta(days=10)).isoformat())
+        self.log_weight(user_id, 175.5, (today - timedelta(days=5)).isoformat())
+        self.log_weight(user_id, 175.0, today.isoformat())
         
         self.conn.commit()
 
@@ -182,13 +209,39 @@ class DatabaseManager:
         return [{'date': row[0], 'total': row[1]} for row in self.cursor.fetchall()]
 
     def load_tracked_dates(self, user_id): 
-        self.cursor.execute(                          
+        self.cursor.execute(                   
             "SELECT DISTINCT entry_date FROM entries WHERE user_id = ? AND entry_date IS NOT NULL", 
-            (user_id,)                                
-        )                                             
+            (user_id,)                         
+        )                                    
         return [row[0] for row in self.cursor.fetchall()] 
 
-# Profile Setup Window Class
+    def log_weight(self, user_id, weight_lb, log_date=None):
+        """Logs a new weight (in Lbs) for a specific date (or today)."""
+        if log_date is None:
+            log_date = date.today().isoformat()
+            
+        try:
+            # Use INSERT OR REPLACE to handle both new entries and updates on the same day for a specific user
+            self.cursor.execute("""
+                INSERT OR REPLACE INTO WeightLogs (user_id, log_date, weight_lb)
+                VALUES (?, ?, ?)
+            """, (user_id, log_date, float(weight_lb)))
+            self.conn.commit()
+            self.cursor.execute("UPDATE users SET weight=? WHERE id=?", (float(weight_lb), user_id))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error logging weight: {e}")
+            return False
+
+    def load_weight_data(self, user_id):
+        self.cursor.execute("""
+            SELECT log_date, weight_lb FROM WeightLogs 
+            WHERE user_id = ?
+            ORDER BY log_date ASC
+        """, (user_id,))
+        return self.cursor.fetchall()
+
 class ProfileSetupWindow:
     def __init__(self, master, db, user_id, username, login_success_callback):
         self.master = master
@@ -266,12 +319,13 @@ class ProfileSetupWindow:
             messagebox.showerror("Input Error", f"Please enter valid positive numbers for all fields. {e}", parent=self.profile_win)
             return
 
-        # Save total inches to DB
         self.db.update_profile(self.user_id, age, height_total_inches, weight, goal_weight, sex, activity_level)
+        
+        self.db.log_weight(self.user_id, weight, date.today().isoformat())
+        
         self.profile_win.destroy()
         self.login_success_callback(self.user_id, self.username) 
 
-# Authentication Window Class
 class AuthWindow:
     def __init__(self, master, db, login_success_callback):
         self.master = master
@@ -282,7 +336,13 @@ class AuthWindow:
         
         self.auth_win = tk.Toplevel(master)
         self.auth_win.title("Calorie Tracker - Login / Register")
-        self.auth_win.geometry("500x450")
+        win_width = 500
+        win_height = 450
+        screen_width = self.auth_win.winfo_screenwidth()
+        screen_height = self.auth_win.winfo_screenheight()
+        x_coord = int((screen_width / 2) - (win_width / 2))
+        y_coord = int((screen_height / 2) - (win_height / 2))
+        self.auth_win.geometry(f"{win_width}x{win_height}+{x_coord}+{y_coord}")
         self.auth_win.config(bg="#f9f9f9")
         self.auth_win.resizable(False, False)
         
@@ -346,13 +406,13 @@ class AuthWindow:
             messagebox.showerror("Registration Error", "Username already exists. Please choose a different one.", parent=self.auth_win)
 
 
-# Main Application Class
 class CalorieTrackerApp:
     def __init__(self, master):
         self.master = master
         self.db = DatabaseManager()
         self.current_user_id = None
         self.current_username = None
+        self.date_format = "%Y-%m-%d"
 
         self.show_auth_window()
 
@@ -378,7 +438,7 @@ class CalorieTrackerApp:
 
     def highlight_tracked_dates(self): 
         if DateEntry is None or not hasattr(self, 'date_picker'): 
-            return                                                 
+            return                         
         
         calendar_widget = self.date_picker 
 
@@ -403,6 +463,9 @@ class CalorieTrackerApp:
                 continue
 
     def calculate_and_display_profile(self, profile_frame):
+        for widget in profile_frame.winfo_children():
+            widget.destroy()
+            
         profile_data = self.db.get_user_profile(self.current_user_id)
         if not profile_data or any(x is None for x in profile_data):
             tk.Label(profile_frame, text="Profile Data Missing. Please update.", fg="red", bg="#f0f0f0").grid(row=0, column=0, sticky="w", pady=5)
@@ -418,11 +481,12 @@ class CalorieTrackerApp:
             tdee_maintenance = calculator.calculate_tdee(bmr)
             
             tdee_goal = tdee_maintenance + (-500 if goal_weight_lb < weight_lb else 500 if goal_weight_lb > weight_lb else 0)
-        
+            
             safety_floor = 1500 if sex == 'Male' else 1200
             
             if goal_weight_lb < weight_lb and tdee_goal < safety_floor:
                 tdee_goal = safety_floor
+            
             def create_label(parent, text, value, row, color="#333333"):
                 tk.Label(parent, text=text, anchor='w', justify='left', bg="#f0f0f0", font=('Arial', 10, 'bold')).grid(row=row, column=0, sticky='w', padx=5, pady=2)
                 tk.Label(parent, text=value, anchor='e', justify='right', bg="#f0f0f0", fg=color, font=('Arial', 10, 'bold')).grid(row=row, column=1, sticky='e', padx=5, pady=2)
@@ -430,11 +494,14 @@ class CalorieTrackerApp:
 
             tk.Label(profile_frame, text="Metrics Summary", bg="#e0e0e0", font=('Arial', 12, 'bold')).grid(row=0, column=0, columnspan=2, pady=(0, 5), sticky="ew")
             
+            #Current Weight
+            create_label(profile_frame, "Current Weight:", f"{weight_lb:.1f} Lbs (Goal: {goal_weight_lb:.1f} Lbs)", 1, color="#333333")
+            
             #BMI
-            create_label(profile_frame, "Current BMI:", f"{current_bmi:.1f} ({bmi_category})", 1, color=("#4CAF50" if bmi_category == "Healthy Weight" else "#FF9800"))
+            create_label(profile_frame, "Current BMI:", f"{current_bmi:.1f} ({bmi_category})", 2, color=("#4CAF50" if bmi_category == "Healthy Weight" else "#FF9800"))
             
             #Maintenance Calories
-            create_label(profile_frame, "Daily Maintenance (TDEE):", f"{tdee_maintenance:.0f} kcal", 2, color="#0056b3")
+            create_label(profile_frame, "Daily Maintenance (TDEE):", f"{tdee_maintenance:.0f} kcal", 3, color="#0056b3")
             
             #Goal Calories
             goal_text = "Loss Target" if goal_weight_lb < weight_lb else "Gain Target" if goal_weight_lb > weight_lb else "Maintain Target"
@@ -443,22 +510,76 @@ class CalorieTrackerApp:
             if goal_weight_lb < weight_lb and tdee_goal == safety_floor:
                 goal_display += " (Safety Floor)"
                 
-            create_label(profile_frame, f"Goal Calories ({goal_text}):", goal_display, 3, color="#DC3545")
+            create_label(profile_frame, f"Goal Calories ({goal_text}):", goal_display, 4, color="#DC3545")
             
-            #Row 4: Healthy BMI Range
+            #Row 5: Healthy BMI Range
             height_m = float(height_in) * M_PER_INCH
             min_weight_kg = 18.5 * (height_m ** 2)
             max_weight_kg = 24.9 * (height_m ** 2)
             min_weight_lb = round(min_weight_kg / KG_PER_LB, 0)
             max_weight_lb = round(max_weight_kg / KG_PER_LB, 0)
-            create_label(profile_frame, "Healthy Weight Range(CDC):", f"{min_weight_lb:.0f} - {max_weight_lb:.0f} lbs", 4)
+            create_label(profile_frame, "Healthy Weight Range:", f"{min_weight_lb:.0f} - {max_weight_lb:.0f} lbs", 5)
 
 
         except ValueError as e:
             tk.Label(profile_frame, text=f"Error in calculation: {e}", fg="red", bg="#f0f0f0").grid(row=0, column=0, sticky="w", pady=5)
 
+    def plot_weight_graph(self):        
+        if hasattr(self, 'canvas_widget') and self.canvas_widget:
+            self.canvas_widget.destroy()
+        if hasattr(self, 'toolbar') and self.toolbar:
+            self.toolbar.destroy()
+
+        data = self.db.load_weight_data(self.current_user_id)
+        
+        self.fig = Figure(figsize=(8, 3), dpi=100) 
+        self.ax = self.fig.add_subplot(111)
+        
+        if not data:
+            self.ax.text(0.5, 0.5, 'Log your first weight!', 
+                         ha='center', va='center', fontsize=10, color='gray')
+            self.ax.set_xticks([])
+            self.ax.set_yticks([])
+            self.ax.set_title('Weight Progress', fontsize=10)
+        else:
+            date_strings = [item[0] for item in data]
+            weights = [item[1] for item in data]
+            
+            sorted_dates = [datetime.strptime(d, self.date_format).date() for d in date_strings]
+
+            self.ax.plot(sorted_dates, weights, 
+                        marker='o',          
+                        linestyle='-',       
+                        color='#5c6bc0',     
+                        linewidth=2,
+                        markersize=5)
+            
+            for d, w in zip(sorted_dates, weights):
+                self.ax.annotate(f'{w:.1f}', (d, w),
+                                 textcoords="offset points", xytext=(0, 5),
+                                 ha='center', fontsize=7, color='#333333')
+
+            date_formatter = mdates.DateFormatter('%m/%d')
+            self.ax.xaxis.set_major_formatter(date_formatter)
+            
+            self.ax.set_title('Weight Progress (Lbs)', fontsize=10, fontweight='bold')
+            self.ax.set_ylabel('Weight (Lbs)', fontsize=8)
+            
+            self.fig.autofmt_xdate(rotation=20)
+            self.ax.grid(True, linestyle='--', alpha=0.6)
+            self.ax.tick_params(axis='x', labelsize=7)
+            self.ax.tick_params(axis='y', labelsize=8)
+
+        self.fig.tight_layout(pad=0.5)
+
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.graph_container)
+        self.canvas_widget = self.canvas.get_tk_widget()
+        self.canvas_widget.grid(row=0, column=0, sticky="nsew")
+        self.canvas.draw()
+
 
     def show_main_tracker(self, user_id, username):
+        root.state('zoomed')
         self.current_user_id = user_id
         self.current_username = username
         self.selected_date = date.today()
@@ -478,17 +599,18 @@ class CalorieTrackerApp:
             widget.destroy()
 
         self.master.title(f"Calorie Counter - Logged in as: {username}")
-        self.master.geometry("900x700") 
+        # Set a minimum size, but allow scaling up
+        self.master.minsize(1000, 1000) 
         self.master.config(bg="#f0f0f0")
         
         self.master.grid_columnconfigure(0, weight=3) 
         self.master.grid_columnconfigure(1, weight=1) 
-        self.master.grid_rowconfigure(0, weight=1)
+        self.master.grid_rowconfigure(0, weight=1)    
         
         main_content_frame = tk.Frame(self.master, bg="#f0f0f0")
         main_content_frame.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         main_content_frame.grid_columnconfigure(0, weight=1)
-        main_content_frame.grid_rowconfigure(2, weight=1)
+        main_content_frame.grid_rowconfigure(2, weight=1) 
 
         header_frame = tk.Frame(main_content_frame, bg="#e0e0e0")
         header_frame.grid(row=0, column=0, padx=0, pady=(0, 5), sticky="ew")
@@ -499,17 +621,20 @@ class CalorieTrackerApp:
 
         tk.Button(header_frame, text="Logout", command=self.logout, 
                   bg="#dc3545", fg="white", activebackground="#c82333", font=('Arial', 9, 'bold')).grid(row=0, column=1, sticky="e", padx=5)
+        top_horizontal_frame = tk.Frame(main_content_frame, bg="#f0f0f0")
+        top_horizontal_frame.grid(row=1, column=0, sticky="nsew", pady=5)
+        top_horizontal_frame.grid_columnconfigure(0, weight=1) 
+        top_horizontal_frame.grid_columnconfigure(1, weight=1) 
 
-        #Profile Display Area
-        profile_display_frame = tk.Frame(main_content_frame, padx=15, pady=15, bg="#f0f0f0", relief=tk.GROOVE, bd=1)
-        profile_display_frame.grid(row=1, column=0, padx=0, pady=5, sticky="ew")
+        profile_display_frame = tk.Frame(top_horizontal_frame, padx=15, pady=15, bg="#f0f0f0", relief=tk.GROOVE, bd=1)
+        profile_display_frame.grid(row=0, column=0, padx=(0, 5), pady=0, sticky="nsew")
         profile_display_frame.grid_columnconfigure(0, weight=1)
         
+        self.profile_display_frame = profile_display_frame 
         self.calculate_and_display_profile(profile_display_frame)
         
-        #Input Frame
-        input_frame = tk.Frame(main_content_frame, padx=15, pady=15, bg="#e0e0e0")
-        input_frame.grid(row=2, column=0, padx=0, pady=10, sticky="ew")
+        input_frame = tk.Frame(top_horizontal_frame, padx=15, pady=15, bg="#e0e0e0", relief=tk.GROOVE, bd=1)
+        input_frame.grid(row=0, column=1, padx=(5, 0), pady=0, sticky="nsew")
         input_frame.columnconfigure(1, weight=1)
         
         date_row = 0
@@ -560,22 +685,25 @@ class CalorieTrackerApp:
         self.calories_entry = tk.Entry(input_frame, width=30, font=('Arial', 10))
         self.calories_entry.grid(row=2, column=1, padx=5, pady=5, sticky="ew")
 
+        tk.Label(input_frame, text="Weight (Lbs):", bg="#e0e0e0", font=('Arial', 10, 'bold')).grid(row=3, column=0, sticky="w", pady=5, padx=5)
+        self.weight_entry = tk.Entry(input_frame, width=30, font=('Arial', 10))
+        self.weight_entry.grid(row=3, column=1, padx=5, pady=5, sticky="ew")
+
         self.add_button = tk.Button(
             input_frame, 
-            text="Add Entry", 
+            text="Add Entry / Log Weight",
             command=self.add_entry, 
             bg="#4CAF50", 
             fg="white", 
             activebackground="#45a049", 
             font=('Arial', 11, 'bold')
         )
-        self.add_button.grid(row=3, column=0, columnspan=2, pady=10, sticky="ew")
-
-        #Display Frame 
+        self.add_button.grid(row=4, column=0, columnspan=2, pady=10, sticky="ew")
         display_frame = tk.Frame(main_content_frame, padx=15, pady=15, bg="#ffffff", relief=tk.GROOVE, bd=1)
-        display_frame.grid(row=3, column=0, padx=0, pady=10, sticky="nsew")
+        display_frame.grid(row=2, column=0, padx=0, pady=10, sticky="nsew")
         display_frame.grid_columnconfigure(0, weight=1)
-        display_frame.grid_rowconfigure(2, weight=1)
+        display_frame.grid_rowconfigure(3, weight=1) # Entries Text row
+        display_frame.grid_rowconfigure(5, weight=1) # Graph row
 
         self.total_label = tk.Label(
             display_frame, 
@@ -584,12 +712,21 @@ class CalorieTrackerApp:
             fg="#E65100",
             bg="#ffffff"
         )
-        self.total_label.grid(row=0, column=0, sticky='ew', pady=(0, 10))
+        self.total_label.grid(row=0, column=0, sticky='ew', pady=(0, 5))
 
-        tk.Label(display_frame, text="--- Entries ---", fg="#555555", bg="#ffffff", font=('Arial', 10)).grid(row=1, column=0, sticky='ew', pady=(0, 5))
+        self.weight_day_label = tk.Label(
+            display_frame,
+            text="Weight Log (M/D): --- Lbs",
+            font=('Arial', 12, 'bold'),
+            fg="#5c6bc0",
+            bg="#ffffff"
+        )
+        self.weight_day_label.grid(row=1, column=0, sticky='ew', pady=(0, 10))
+        
+        tk.Label(display_frame, text="--- Meal/Calorie Entries ---", fg="#555555", bg="#ffffff", font=('Arial', 10)).grid(row=2, column=0, sticky='ew', pady=(10, 5))
         
         text_scroll_frame = tk.Frame(display_frame)
-        text_scroll_frame.grid(row=2, column=0, sticky="nsew")
+        text_scroll_frame.grid(row=3, column=0, sticky="nsew")
         text_scroll_frame.grid_rowconfigure(0, weight=1)
         text_scroll_frame.grid_columnconfigure(0, weight=1)
         
@@ -611,9 +748,20 @@ class CalorieTrackerApp:
         
         self.entries_text.config(state=tk.DISABLED)
 
-        # Exercise Sidebar
+        graph_title = tk.Label(display_frame, text="\n📈Progress (Lbs)",
+                               font=('Arial', 12, 'bold'), fg="#333333", bg="#ffffff")
+        graph_title.grid(row=4, column=0, sticky='ew', pady=(10, 5))
+
+        self.graph_container = tk.Frame(display_frame, bg="#f0f0f0") 
+        self.graph_container.grid(row=5, column=0, sticky="nsew", padx=0)
+        self.graph_container.grid_rowconfigure(0, weight=1)
+        self.graph_container.grid_columnconfigure(0, weight=1)
+        
+        self.plot_weight_graph()
+
         sidebar_frame = tk.Frame(self.master, padx=10, pady=10, bg="#eaf3ff", relief=tk.RIDGE, bd=2)
         sidebar_frame.grid(row=0, column=1, padx=(0, 10), pady=10, sticky="nsew")
+        sidebar_frame.grid_columnconfigure(0, weight=1) 
         recommendations = [
             ("Walk 30 min", "150 kcal"),
             ("1 hour Strength Training", "300 kcal"),
@@ -622,10 +770,10 @@ class CalorieTrackerApp:
             ("Running 5k", "400 kcal"),
             ("Cycling (Moderate)", "350 kcal")
         ]
-        sidebar_frame.grid_rowconfigure(len(recommendations)+4, weight=1)
+        sidebar_frame.grid_rowconfigure(len(recommendations)+3, weight=1) 
 
         tk.Label(sidebar_frame, text="🔥 Daily Exercise Goal 🔥", 
-                 font=('Arial', 12, 'bold'), fg="#333333", bg="#eaf3ff").grid(row=0, column=0, sticky='ew', pady=(0, 10))
+                  font=('Arial', 12, 'bold'), fg="#333333", bg="#eaf3ff").grid(row=0, column=0, sticky='ew', pady=(0, 10))
         
         for i, (name, calories) in enumerate(recommendations):
             item_frame = tk.Frame(sidebar_frame, bg="#ffffff", padx=10, pady=8, relief=tk.FLAT)
@@ -633,12 +781,11 @@ class CalorieTrackerApp:
             tk.Label(item_frame, text=name, font=('Arial', 10, 'bold'), bg="#ffffff", fg="#0056b3").pack(anchor='w')
             tk.Label(item_frame, text=f"Burn Est.: {calories}", font=('Arial', 9), bg="#ffffff", fg="#666666").pack(anchor='w')
 
-        tk.Label(sidebar_frame, text="\nTip: Consistency is key!", 
-                 font=('Arial', 10, 'italic'), fg="#555555", bg="#eaf3ff").grid(row=len(recommendations)+1, column=0, sticky='ew', pady=(10, 0))
-
-        # History section 
-        hist_title = tk.Label(sidebar_frame, text="\n📅 Recent Daily Totals", 
-                             font=('Arial', 12, 'bold'), fg="#333333", bg="#eaf3ff")
+        tk.Label(sidebar_frame, text="\nTip: Consistency is key!\nMake sure to weigh yourself\nregularly and log your\nmeals for accurate tracking.", 
+                  font=('Arial', 10, 'italic'), fg="#555555", bg="#eaf3ff").grid(row=len(recommendations)+1, column=0, sticky='ew', pady=(10, 0))
+        
+        hist_title = tk.Label(sidebar_frame, text="\n📅 Recent Calorie Totals",
+                              font=('Arial', 12, 'bold'), fg="#333333", bg="#eaf3ff")
         hist_title.grid(row=len(recommendations)+2, column=0, sticky='ew', pady=(16, 6))
 
         hist_container = tk.Frame(sidebar_frame, bg="#eaf3ff")
@@ -646,8 +793,9 @@ class CalorieTrackerApp:
         hist_container.grid_rowconfigure(0, weight=1)
         hist_container.grid_columnconfigure(0, weight=1)
 
-        self.history_list = tk.Listbox(hist_container, height=10)
+        self.history_list = tk.Listbox(hist_container) 
         self.history_list.grid(row=0, column=0, sticky="nsew")
+
 
         def refresh_history():
             self.history_list.delete(0, tk.END)
@@ -663,32 +811,66 @@ class CalorieTrackerApp:
     def add_entry(self):
         meal = self.meal_var.get().strip()
         calories_str = self.calories_entry.get().strip()
+        weight_str = self.weight_entry.get().strip()
+        
+        calorie_logged = False
+        weight_logged = False
 
-        if not meal or not calories_str:
-            messagebox.showerror("Input Error", "Please fill in both the meal and calorie fields.")
-            return
-
-        try:
-            calories = int(calories_str)
-            if calories <= 0:
+        if meal and calories_str:
+            try:
+                calories = int(calories_str)
+                if calories <= 0:
+                    messagebox.showerror("Input Error", "Calories must be a positive whole number.")
+                    return
+                self.db.save_entry(self.current_user_id, meal, calories, self.selected_date.isoformat())
+                calorie_logged = True
+            except ValueError:
                 messagebox.showerror("Input Error", "Calories must be a positive whole number.")
                 return
-        except ValueError:
-            messagebox.showerror("Input Error", "Calories must be a positive whole number.")
-            return
 
-        self.db.save_entry(self.current_user_id, meal, calories, self.selected_date.isoformat())
+        if weight_str:
+            try:
+                weight = float(weight_str)
+                if weight <= 0:
+                    messagebox.showerror("Input Error", "Weight must be a positive number.")
+                    return
+                
+                if self.db.log_weight(self.current_user_id, weight, self.selected_date.isoformat()):
+                    weight_logged = True
+                
+            except ValueError:
+                messagebox.showerror("Input Error", "Weight must be a valid positive number.")
+                return
+
+        if not calorie_logged and not weight_logged:
+            messagebox.showerror("Input Error", "Please enter a valid Meal/Calorie entry or a Weight value to save.")
+            return
 
         self.meal_var.set("")
         self.calories_entry.delete(0, tk.END)
+        self.weight_entry.delete(0, tk.END)
 
         self.update_display()
+
 
     def update_display(self):
         current_entries = self.db.load_entries(self.current_user_id, self.selected_date.isoformat())
         
         total = sum(entry['calories'] for entry in current_entries)
         self.total_label.config(text=f"Total Calories on {self.selected_date.strftime('%b %d, %Y')}: {total} kcal")
+
+        weight_data = self.db.load_weight_data(self.current_user_id)
+        current_weight = "---"
+        selected_date_iso = self.selected_date.isoformat()
+        
+        for log_date, weight_lb in weight_data:
+            if log_date == selected_date_iso:
+                current_weight = f"{weight_lb:.1f}"
+                break
+        
+        if hasattr(self, 'weight_day_label'):
+            self.weight_day_label.config(text=f"Weight Log ({self.selected_date.strftime('%m/%d')}): {current_weight} Lbs")
+
 
         self.entries_text.config(state=tk.NORMAL)
         self.entries_text.delete(1.0, tk.END)
@@ -707,6 +889,13 @@ class CalorieTrackerApp:
 
         self.highlight_tracked_dates() 
         
+        if hasattr(self, 'profile_display_frame'):
+             self.calculate_and_display_profile(self.profile_display_frame)
+             
+        if hasattr(self, 'plot_weight_graph'):
+            self.plot_weight_graph()
+
+
 # Run Application
 if __name__ == '__main__':
     root = tk.Tk()
