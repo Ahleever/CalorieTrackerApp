@@ -1,0 +1,8 @@
+import tkinter as tk
+from app import CalorieTrackerApp
+
+# Run Application
+if __name__ == '__main__':
+    root = tk.Tk()
+    app = CalorieTrackerApp(root)
+    root.mainloop()
