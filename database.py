@@ -5,6 +5,12 @@ from datetime import date, timedelta, datetime
 
 class DatabaseManager:
     def __init__(self, db_name="calorie_tracker.db"):
+        app_data_path = os.getenv('APPDATA')
+        if not app_data_path:
+            app_data_path = os.path.expanduser("~")
+        self.app_dir = os.path.join(app_data_path, "CalorieTrackerApp")
+        os.makedirs(self.app_dir, exist_ok=True)
+        db_path = os.path.join(self.app_dir, db_name)
         self.conn = sqlite3.connect(db_name) 
         self.cursor = self.conn.cursor()
         self.create_tables()
