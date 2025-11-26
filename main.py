@@ -1,7 +1,9 @@
-import tkinter as tk
+import customtkinter as ctk
 from app import CalorieTrackerApp
 import sys
 import os
+ctk.set_appearance_mode("Light") 
+ctk.set_default_color_theme("green")
 
 def resource_path(relative_path):
     try:
@@ -11,11 +13,12 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 if __name__ == '__main__':
-    root = tk.Tk()
+    root = ctk.CTk()
     try:
         icon_path = resource_path("my_icon.ico")
         root.iconbitmap(icon_path)
     except Exception as e:
         print(f"Error setting icon: {e}")
+        
     app = CalorieTrackerApp(root)
     root.mainloop()

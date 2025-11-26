@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('calorie_tracker.db', '.'), ('my_icon.ico', '.')],
+    datas=[('my_icon.ico', '.'), ('C:\\\\Users\\\\olive\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python310\\\\lib\\\\site-packages\\\\customtkinter', 'customtkinter/')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
