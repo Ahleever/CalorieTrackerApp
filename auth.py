@@ -1,7 +1,10 @@
-import customtkinter as ctk
-from tkinter import messagebox
 from datetime import date
+from tkinter import messagebox
+
+import customtkinter as ctk
+
 from utils import ProfileCalculator
+
 
 class ProfileSetupWindow:
     def __init__(self, master, db, user_id, username, login_success_callback):

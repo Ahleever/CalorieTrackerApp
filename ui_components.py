@@ -1,14 +1,16 @@
-import customtkinter as ctk
-from datetime import datetime, date
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates 
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.figure import Figure
-from utils import ProfileCalculator, KG_PER_LB, M_PER_INCH
 import random
 import re
 import tkinter as tk
 import tkinter.ttk as ttk
+from datetime import date, datetime
+
+import customtkinter as ctk
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
+from utils import KG_PER_LB, M_PER_INCH, ProfileCalculator
 
 try:
     from tkcalendar import DateEntry 

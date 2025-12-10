@@ -1,7 +1,10 @@
-import customtkinter as ctk
-from app import CalorieTrackerApp
-import sys
 import os
+import sys
+
+import customtkinter as ctk
+
+from app import CalorieTrackerApp
+
 ctk.set_appearance_mode("Light") 
 ctk.set_default_color_theme("green")
 

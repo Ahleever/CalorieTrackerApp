@@ -1,15 +1,17 @@
-import customtkinter as ctk
-from tkinter import messagebox
-from datetime import date, timedelta
-from database import DatabaseManager
-from auth import AuthWindow
-from ui_components import (ProfileDisplayFrame, InputFrame, 
-                           EntriesDisplay, WeightGraph, SidebarFrame, FoodPickDialog)
-from utils import ProfileCalculator
-import urllib.parse
-import urllib.request
 import json
 import os
+import urllib.parse
+import urllib.request
+from datetime import date, timedelta
+from tkinter import messagebox
+
+import customtkinter as ctk
+
+from auth import AuthWindow
+from database import DatabaseManager
+from ui_components import (EntriesDisplay, FoodPickDialog, InputFrame,
+                           ProfileDisplayFrame, SidebarFrame, WeightGraph)
+from utils import ProfileCalculator
 
 try:
     from tkcalendar import DateEntry 

@@ -1,7 +1,8 @@
-import sqlite3
 import hashlib
 import os
-from datetime import date, timedelta, datetime
+import sqlite3
+from datetime import date, datetime, timedelta
+
 
 class DatabaseManager:
     def __init__(self, db_name="calorie_tracker.db"):
