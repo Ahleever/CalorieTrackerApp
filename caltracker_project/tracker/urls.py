@@ -1,0 +1,8 @@
+# tracker/urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('', views.dashboard, name='dashboard'),
+    path('delete/<int:entry_id>/', views.delete_food, name='delete_food'), # <--- New line
+]
