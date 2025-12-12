@@ -1,29 +1,50 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
+from datetime import datetime, timedelta  # <--- Important Imports
 from .models import FoodEntry, UserProfile, WeightLog
 from .utils import calculate_tdee, get_exercise_recommendation, calculate_bmi
 
 @login_required
 def dashboard(request):
     user = request.user
-    today = timezone.now().date()
     
-    # HANDLE POST REQUESTS 
+    # --- 1. DETERMINE DATE TO SHOW ---
+    date_str = request.GET.get('date')
+    if date_str:
+        try:
+            current_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            current_date = timezone.now().date()
+    else:
+        current_date = timezone.now().date()
+
+    # Calculate navigation dates
+    prev_date = current_date - timedelta(days=1)
+    next_date = current_date + timedelta(days=1)
+    is_today = (current_date == timezone.now().date())
+    
+    # --- 2. HANDLE POST REQUESTS (Actions) ---
     if request.method == 'POST':
         action = request.POST.get('action')
         
-        # Add Food
+        # Action A: Add Food
         if action == 'add_food':
             meal = request.POST.get('meal_name')
             cals = request.POST.get('calories')
             if meal and cals:
-                FoodEntry.objects.create(user=user, meal=meal, calories=int(cals))
+                FoodEntry.objects.create(
+                    user=user, 
+                    meal=meal, 
+                    calories=int(cals),
+                    entry_date=current_date  # <--- Save to the viewed date
+                )
 
-        # Log Weight
+        # Action B: Log Weight
         elif action == 'log_weight':
             weight = request.POST.get('weight')
-            date_val = request.POST.get('date') or today
+            # Use the date from the form, or default to current view
+            date_val = request.POST.get('date') or current_date
             if weight:
                 WeightLog.objects.update_or_create(
                     user=user, log_date=date_val,
@@ -34,7 +55,7 @@ def dashboard(request):
                 profile.current_weight = weight
                 profile.save()
 
-        # Update Profile
+        # Action C: Update Profile
         elif action == 'update_profile':
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.age = request.POST.get('age') or None
@@ -45,54 +66,88 @@ def dashboard(request):
             profile.activity_level = request.POST.get('activity_level')
             profile.save()
 
-        return redirect('dashboard')
+        # Redirect back to the SAME date
+        return redirect(f"{request.path}?date={current_date}")
+
+    # --- 3. FETCH DATA FOR DISPLAY ---
     
-    # Display Data
-    
-    # Food Data
-    food_entries = FoodEntry.objects.filter(user=user).order_by('-entry_date', '-id')
-    today_entries = food_entries.filter(entry_date=today)
+    # A. Food Data (Filtered by Date)
+    food_entries = FoodEntry.objects.filter(user=user).order_by('-id')
+    today_entries = food_entries.filter(entry_date=current_date) # Filter for View Date
     total_calories = sum(e.calories for e in today_entries)
 
-    # Profile & Recommendations
+    # B. Profile & Recommendations
     profile, created = UserProfile.objects.get_or_create(user=user)
     tdee = int(calculate_tdee(profile))
     recommendations = get_exercise_recommendation(total_calories, tdee)
     bmi_data = calculate_bmi(profile)
 
+    # Progress Bar Calculation
     if tdee > 0:
         progress_percentage = (total_calories / tdee) * 100
     else:
         progress_percentage = 0
-
     progress_width = min(progress_percentage, 100)
-        
-    # Weight Data
+
+    # C. Weight Data (Chart & History)
     weight_logs = WeightLog.objects.filter(user=user).order_by('-log_date')
     
-    # Prepare Chart Data (Oldest -> Newest)
+    # Chart Data (Oldest -> Newest)
     chart_data = weight_logs.order_by('log_date')
     dates = [str(log.log_date) for log in chart_data]
     weights = [float(log.weight_lb) for log in chart_data]
 
+    # D. Goal Progress Message
+    progress_msg = None
+    if weight_logs.exists() and profile.goal_weight:
+        start_weight = weight_logs.last().weight_lb
+        current = profile.current_weight
+        goal = profile.goal_weight
+        
+        change = current - start_weight
+        to_go = current - goal
+        
+        if change < 0:
+            msg_trend = f"Down {abs(change):.1f} lbs total."
+        elif change > 0:
+            msg_trend = f"Up {abs(change):.1f} lbs total."
+        else:
+            msg_trend = "No change yet."
+
+        if abs(to_go) < 0.5:
+             progress_msg = "🎉 You hit your goal weight!"
+        else:
+             progress_msg = f"{msg_trend} {abs(to_go):.1f} lbs to goal."
+
     context = {
-        'entries': food_entries,
+        'entries': today_entries,       # Showing only entries for the selected date
         'total_calories': total_calories,
         'profile': profile,
         'tdee': tdee,
         'bmi': bmi_data,
         'recommendations': recommendations,
-        'logs': weight_logs[:7], # Weekly Display
+        'logs': weight_logs[:5],
         'dates': dates,
         'weights': weights,
         'progress_percentage': progress_percentage,
         'progress_width': progress_width,
+        'progress_msg': progress_msg,
+        
+        # Date Navigation Context
+        'current_date': current_date,
+        'prev_date': prev_date,
+        'next_date': next_date,
+        'is_today': is_today,
     }
     return render(request, 'tracker/dashboard.html', context)
 
 @login_required
 def delete_food(request, entry_id):
     entry = get_object_or_404(FoodEntry, id=entry_id, user=request.user)
+    # Capture the date of the entry being deleted so we can redirect back to it
+    entry_date = entry.entry_date 
+    
     if request.method == 'POST':
         entry.delete()
-    return redirect('dashboard')
+        
+    return redirect(f"/tracker/?date={entry_date}")
