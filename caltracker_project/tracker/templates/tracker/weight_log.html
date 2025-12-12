@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}Weight Log{% endblock %}
+
+{% block extra_head %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock extra_head %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Weight History</h2>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Progress Chart</div>
+        <div class="card-body">
+            <canvas id="weightChart" style="max-height: 400px;"></canvas>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Log New Weight</div>
+        <div class="card-body">
+            <form method="POST">
+                {% csrf_token %}
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label">Date</label>
+                        <input type="date" name="date" class="form-control" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Weight (lbs)</label>
+                        <input type="number" step="0.1" name="weight" class="form-control" placeholder="e.g. 175.5" required>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-primary w-100">Log Weight</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Weight (lbs)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.log_date }}</td>
+                <td>{{ log.weight_lb }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="2">No weight history yet. Start logging!</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock content %}
+
+{% block extra_js %}
+    <script>
+        // Set default date to today
+        document.querySelector('input[type="date"]').valueAsDate = new Date();
+
+        // Get the canvas element
+        const ctx = document.getElementById('weightChart');
+
+        // Check if we actually have data to draw
+        const dates = {{ dates|safe }};   
+        const weights = {{ weights|safe }}; 
+
+        if (dates.length > 0) {
+            new Chart(ctx, {
+                type: 'line', 
+                data: {
+                    labels: dates, 
+                    datasets: [{
+                        label: 'Weight (lbs)',
+                        data: weights, 
+                        borderColor: 'rgb(13, 110, 253)', 
+                        backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.1, 
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: false 
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+{% endblock extra_js %}
