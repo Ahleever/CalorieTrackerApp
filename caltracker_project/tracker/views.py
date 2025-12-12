@@ -1,7 +1,7 @@
 # tracker/views.py
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import FoodEntry
+from .models import FoodEntry, UserProfile
 
 @login_required
 def dashboard(request):
@@ -39,3 +39,21 @@ def delete_food(request, entry_id):
         entry.delete()
         
     return redirect('dashboard')
+
+@login_required
+def profile(request):
+    # Get the profile, or create a blank one if it doesn't exist yet
+    profile, created = UserProfile.objects.get_or_create(user=request.user)
+
+    if request.method == 'POST':
+        profile.age = request.POST.get('age')
+        profile.height = request.POST.get('height')
+        profile.current_weight = request.POST.get('weight')
+        profile.goal_weight = request.POST.get('goal_weight')
+        profile.sex = request.POST.get('sex')
+        profile.activity_level = request.POST.get('activity_level')
+        
+        profile.save()
+        return redirect('dashboard')  # Redirect to dashboard after saving
+
+    return render(request, 'tracker/profile.html', {'profile': profile})
