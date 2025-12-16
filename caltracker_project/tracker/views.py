@@ -1,8 +1,13 @@
+import requests
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import login 
+from django.contrib import messages
 from django.utils import timezone
-from datetime import datetime, timedelta  # <--- Important Imports
+from django.urls import reverse
+from datetime import datetime, timedelta  
 from .models import FoodEntry, UserProfile, WeightLog, FoodItem
 from .utils import calculate_tdee, get_exercise_recommendation, calculate_bmi
 from .forms import SignUpForm
@@ -72,17 +77,25 @@ def dashboard(request):
                 profile, _ = UserProfile.objects.get_or_create(user=user)
                 profile.current_weight = weight
                 profile.save()
+                messages.success(request, f"Weight logged: {weight} lbs")
 
         # Action C: Update Profile
         elif action == 'update_profile':
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.age = request.POST.get('age') or None
-            profile.height = request.POST.get('height') or None
+            h_ft = request.POST.get('height_ft')
+            h_in = request.POST.get('height_in')
+            # Convert to total inches for database 
+            if h_ft or h_in:
+                profile.height = (int(h_ft or 0) * 12) + float(h_in or 0)
+            else:
+                profile.height = None
             profile.current_weight = request.POST.get('weight') or None
             profile.goal_weight = request.POST.get('goal_weight') or None
             profile.sex = request.POST.get('sex')
             profile.activity_level = request.POST.get('activity_level')
             profile.save()
+            messages.success(request, "Profile settings updated successfully!")
 
         # Redirect back to the SAME date
         return redirect(f"{request.path}?date={current_date}")
@@ -141,6 +154,12 @@ def dashboard(request):
              progress_msg = f"{msg_trend} {abs(to_go):.1f} lbs to goal."
 
     saved_foods = FoodItem.objects.filter(user=user).order_by('name')
+    if profile.height:
+        display_ft = int(profile.height // 12)
+        display_in = int(profile.height % 12)
+    else:
+        display_ft = ''
+        display_in = ''
 
     context = {
         'entries': today_entries,       # Showing only entries for the selected date
@@ -163,6 +182,8 @@ def dashboard(request):
         'next_date': next_date,
         'is_today': is_today,
         'saved_foods': saved_foods,
+        'display_ft': display_ft, 
+        'display_in': display_in,
     }
     return render(request, 'tracker/dashboard.html', context)
 
@@ -175,16 +196,26 @@ def delete_food(request, entry_id):
     if request.method == 'POST':
         entry.delete()
         
-    return redirect(f"/tracker/?date={entry_date}")
+    return redirect(f"{reverse('dashboard')}?date={entry_date}")
+
+@login_required
+def delete_favorite(request, item_id):
+    item = get_object_or_404(FoodItem, id=item_id, user=request.user)
+    if request.method == 'POST':
+        item.delete()
+        messages.success(request, f"Removed '{item.name}' from favorites.")
+    return redirect('dashboard')
 
 def register(request):
     if request.method == 'POST':
-        form = SignUpForm(request.POST) 
+        form = SignUpForm(request.POST)
         if form.is_valid():
-            form.save()
-            return redirect('login')
+            user = form.save()
+            login(request, user)
+            messages.success(request, "🎉 Account created successfully! Please set up your profile.")
+            return redirect('dashboard')
     else:
-        form = SignUpForm() 
+        form = SignUpForm()
 
     return render(request, 'registration/register.html', {'form': form})
 
@@ -197,3 +228,72 @@ def delete_account(request):
     
     # Render a confirmation page (optional) or just redirect if triggered by a modal
     return redirect('dashboard')
+
+def register(request):
+    if request.method == 'POST':
+        form = SignUpForm(request.POST)
+        if form.is_valid():
+            user = form.save()
+            login(request, user)
+            return redirect('dashboard') 
+            
+    else:
+        form = SignUpForm()
+    
+    return render(request, 'registration/register.html', {'form': form})
+
+
+
+def search_openfoodfacts(request):
+    query = request.GET.get('q', '')
+    if not query:
+        return JsonResponse({'products': []})
+
+    url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query}&search_simple=1&action=process&json=1&page_size=5"
+    
+    try:
+        response = requests.get(url, headers={'User-Agent': 'CalTrack/1.0'})
+        if response.status_code != 200:
+            return JsonResponse({'products': []})
+            
+        data = response.json()
+        
+        results = []
+        for product in data.get('products', []):
+            nutriments = product.get('nutriments', {})
+
+            # --- HELPER FUNCTION: Safely get numbers ---
+            def get_val(keys):
+                """Try multiple keys, safely convert to float, return 0 on failure"""
+                for key in keys:
+                    val = nutriments.get(key)
+                    try:
+                        # If val exists, try to convert it
+                        if val is not None:
+                            return float(val)
+                    except (ValueError, TypeError):
+                        continue # If conversion fails, try next key
+                return 0.0
+
+            # Get values safely (try serving size first, then 100g)
+            cals = get_val(['energy-kcal_serving', 'energy-kcal_100g', 'energy-kcal'])
+            prot = get_val(['proteins_serving', 'proteins_100g', 'proteins'])
+            carbs = get_val(['carbohydrates_serving', 'carbohydrates_100g', 'carbohydrates'])
+            fat = get_val(['fat_serving', 'fat_100g', 'fat'])
+
+            item = {
+                'name': product.get('product_name', 'Unknown'),
+                'brand': product.get('brands', ''),
+                'calories': int(cals), # Safe to int() now because cals is definitely a float
+                'protein': round(prot, 1),
+                'carbs': round(carbs, 1),
+                'fat': round(fat, 1),
+                'serving_size': product.get('serving_size', '100g')
+            }
+            results.append(item)
+            
+        return JsonResponse({'products': results})
+        
+    except Exception as e:
+        print(f"API Error: {e}") # Print error to terminal instead of crashing
+        return JsonResponse({'error': 'Search failed'}, status=500)

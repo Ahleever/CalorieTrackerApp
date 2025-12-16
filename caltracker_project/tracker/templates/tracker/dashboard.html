@@ -40,7 +40,6 @@
     <div class="col-md-8 mx-auto">
         <div class="card shadow-sm">
             <div class="card-body">
-                
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <a href="?date={{ prev_date|date:'Y-m-d' }}" class="btn btn-outline-secondary btn-sm">&laquo; Prev</a>
                     
@@ -154,9 +153,14 @@
         <div class="card h-100">
             <div class="card-header bg-primary text-white">Log Meal ({{ current_date|date:"M d" }})</div>
             <div class="card-body">
-                
                 <div class="mb-3">
-                    <label class="form-label small fw-bold text-muted">⚡ Quick Add</label>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label small fw-bold text-muted mb-0">⚡ Quick Add</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary py-0" style="font-size: 0.8em;" data-bs-toggle="modal" data-bs-target="#favoritesModal">
+                            Manage Favorites
+                        </button>
+                    </div>
+                    
                     <select class="form-select form-select-sm" id="quickAddSelect" onchange="fillQuickAdd()">
                         <option value="">-- Select a Favorite --</option>
                         {% for item in saved_foods %}
@@ -171,16 +175,21 @@
                         {% endfor %}
                     </select>
                 </div>
-
                 <hr>
-
-                <form method="POST">
+                <form method="POST" id="mainEntryForm">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="add_food">
                     
                     <div class="mb-2">
-                        <input type="text" name="meal_name" id="meal_name" class="form-control" placeholder="What did you eat?" required>
+                        <label class="small text-muted mb-1">Meal Name</label>
+                        <div class="input-group">
+                            <input type="text" name="meal_name" id="meal_name" class="form-control" placeholder="e.g. 2 Eggs" required>
+                            <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#searchModal">
+                                🔎 Search API
+                            </button>
+                        </div>
                     </div>
+
                     <div class="mb-2">
                         <input type="number" name="calories" id="calories" class="form-control" placeholder="Calories" required>
                     </div>
@@ -196,15 +205,15 @@
                             <div class="row g-2">
                                 <div class="col-4">
                                     <label class="small text-muted">Prot (g)</label>
-                                    <input type="number" step="1" name="protein" id="protein" class="form-control form-control-sm">
+                                    <input type="number" step="0.1" name="protein" id="protein" class="form-control form-control-sm">
                                 </div>
                                 <div class="col-4">
                                     <label class="small text-muted">Carb (g)</label>
-                                    <input type="number" step="1" name="carbs" id="carbs" class="form-control form-control-sm">
+                                    <input type="number" step="0.1" name="carbs" id="carbs" class="form-control form-control-sm">
                                 </div>
                                 <div class="col-4">
                                     <label class="small text-muted">Fat (g)</label>
-                                    <input type="number" step="1" name="fat" id="fat" class="form-control form-control-sm">
+                                    <input type="number" step="0.1" name="fat" id="fat" class="form-control form-control-sm">
                                 </div>
                             </div>
                         </div>
@@ -229,26 +238,38 @@
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
                             <span>
                                 <strong>{{ entry.meal }}</strong>
-                                {% if entry.protein or entry.carbs or entry.fat %}
-                                <br><small class="text-muted" style="font-size: 0.75em;">
-                                    Protein:{{ entry.protein|floatformat:0 }} 
-                                    Carbs:{{ entry.carbs|floatformat:0 }} 
-                                    Fat:{{ entry.fat|floatformat:0 }}
-                                </small>
-                                {% endif %}
+                                <br><small class="text-muted">{{ entry.calories }} kcal</small>
                             </span>
-                            <span>
-                                {{ entry.calories }} 
-                                <form action="{% url 'delete_food' entry.id %}" method="POST" class="d-inline ms-2">
-                                    {% csrf_token %}
-                                    <button type="submit" class="btn-close" aria-label="Close"></button>
-                                </form>
-                            </span>
+                            <form action="{% url 'delete_food' entry.id %}" method="POST" class="d-inline">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-close" aria-label="Close"></button>
+                            </form>
                         </li>
                         {% empty %}
-                        <li class="list-group-item text-muted">No meals logged for this day.</li>
+                        <li class="list-group-item text-muted">No meals yet.</li>
                         {% endfor %}
                     </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="searchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Search Food Database</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="api-search-input" class="form-control mb-3" placeholder="Type to search (e.g. 'Avocado')..." autocomplete="off">
+                
+                <div id="api-results-list" class="list-group">
+                    </div>
+                
+                <div id="loading-spinner" class="text-center mt-3" style="display: none;">
+                    <div class="spinner-border text-primary" role="status"></div>
                 </div>
             </div>
         </div>
@@ -272,9 +293,14 @@
                             <label>Age</label>
                             <input type="number" name="age" class="form-control" value="{{ profile.age|default:'' }}">
                         </div>
-                        <div class="col">
-                            <label>Height (in)</label>
-                            <input type="number" name="height" class="form-control" value="{{ profile.height|default:'' }}">
+                        <div class="col-8">
+                            <label class="form-label">Height</label>
+                            <div class="input-group">
+                                <input type="number" name="height_ft" class="form-control" placeholder="Ft" value="{{ display_ft }}">
+                                <span class="input-group-text">ft</span>
+                                <input type="number" name="height_in" class="form-control" placeholder="In" value="{{ display_in }}">
+                                <span class="input-group-text">in</span>
+                            </div>
                         </div>
                     </div>
                     
@@ -305,16 +331,73 @@
                             <option value="Active" {% if profile.activity_level == 'Active' %}selected{% endif %}>Active</option>
                         </select>
                     </div>
-                    <hr>
-                    
-                    <button type="submit" class="btn btn-primary w-100">Save Changes</button>
 
-                    <h6 class="text-danger mt-2" style="text-align: center;">Danger Zone</h6>
-                    <form action="{% url 'delete_account' %}" method="POST" onsubmit="return confirm('Are you sure? This cannot be undone.');">
-                        {% csrf_token %}
-                        <button type="submit" class="btn btn-outline-danger w-100">Delete My Account</button>
-                    </form>
+                    <button type="submit" class="btn btn-primary w-100">Save Changes</button>
                 </form>
+
+                <hr>
+
+                <h6 class="text-danger">Danger Zone</h6>
+                <button type="button" class="btn btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#deleteConfirmModal">
+                    Delete My Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">⚠️ Delete Account?</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body text-center">
+                <p class="fs-5">Are you sure you want to do this?</p>
+                <p class="text-muted">This will permanently delete your account, your profile settings, and all your food/weight history. <strong>This cannot be undone.</strong></p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                
+                <form action="{% url 'delete_account' %}" method="POST">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger">Yes, Delete Everything</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="favoritesModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Manage Favorites</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <ul class="list-group list-group-flush">
+                    {% for item in saved_foods %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="fw-bold d-block">{{ item.name }}</span>
+                            <small class="text-muted">{{ item.calories }} cal</small>
+                        </div>
+                        
+                        <form action="{% url 'delete_favorite' item.id %}" method="POST" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-outline-danger btn-sm border-0 py-0 px-2" title="Delete">
+                                🗑️
+                            </button>
+                        </form>
+                    </li>
+                    {% empty %}
+                    <li class="list-group-item text-center text-muted py-3">
+                        <small>No favorites saved yet.</small>
+                    </li>
+                    {% endfor %}
+                </ul>
             </div>
         </div>
     </div>
@@ -324,6 +407,7 @@
 
 {% block extra_js %}
 <script>
+    // 1. CHART SETUP
     const ctx = document.getElementById('weightChart');
     const dates = {{ dates|safe }};   
     const weights = {{ weights|safe }}; 
@@ -348,41 +432,124 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } }, 
-                scales: {
-                    y: { beginAtZero: false }
-                }
+                scales: { y: { beginAtZero: false } }
             }
         });
     }
 
+    // 2. QUICK ADD LOGIC
     function fillQuickAdd() {
         const select = document.getElementById('quickAddSelect');
         const selectedOption = select.options[select.selectedIndex];
+        if (selectedOption.value === "") return;
 
-        // If placeholder is selected, clear fields
-        if (selectedOption.value === "") {
-            document.getElementById('meal_name').value = "";
-            document.getElementById('calories').value = "";
-            document.getElementById('protein').value = "";
-            document.getElementById('carbs').value = "";
-            document.getElementById('fat').value = "";
-            return;
-        }
-
-        // Fill fields using data attributes
         document.getElementById('meal_name').value = selectedOption.dataset.name;
         document.getElementById('calories').value = selectedOption.dataset.cal;
-        
-        // Open the macro collapse automatically if it's hidden
-        const macroCollapse = document.getElementById('macroInputs');
-        if (!macroCollapse.classList.contains('show')) {
-            new bootstrap.Collapse(macroCollapse, { toggle: true });
-        }
-
-        // Fill macros
         document.getElementById('protein').value = selectedOption.dataset.prot;
         document.getElementById('carbs').value = selectedOption.dataset.carb;
         document.getElementById('fat').value = selectedOption.dataset.fat;
+
+        new bootstrap.Collapse(document.getElementById('macroInputs'), { toggle: false }).show();
     }
+
+    // 3. PROFILE POPUP CHECK
+    {% if not profile.height %}
+        document.addEventListener('DOMContentLoaded', function() {
+            var myModal = new bootstrap.Modal(document.getElementById('profileModal'));
+            myModal.show();
+        });
+    {% endif %}
+
+    // 4. SEARCH API LOGIC
+    const searchInput = document.getElementById('api-search-input');
+    const resultsList = document.getElementById('api-results-list');
+    const spinner = document.getElementById('loading-spinner');
+    let debounceTimer;
+
+    // Listen for typing
+    searchInput.addEventListener('input', function(e) {
+        const query = e.target.value.trim();
+        clearTimeout(debounceTimer);
+        resultsList.innerHTML = '';
+        
+        if (query.length < 2) return;
+
+        spinner.style.display = 'block';
+        debounceTimer = setTimeout(() => {
+            fetchFood(query);
+        }, 500);
+    });
+
+    async function fetchFood(query) {
+        try {
+            const response = await fetch(`/api/search-food/?q=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            
+            spinner.style.display = 'none';
+            
+            if (data.products && data.products.length > 0) {
+                data.products.forEach(item => {
+                    const button = document.createElement('button');
+                    button.className = 'list-group-item list-group-item-action text-start';
+                    button.innerHTML = `
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">${item.name}</h6>
+                            <small>${item.calories} kcal</small>
+                        </div>
+                        <small class="text-muted">
+                            ${item.brand} | P:${item.protein} C:${item.carbs} F:${item.fat}
+                        </small>
+                    `;
+                    button.onclick = function() {
+                        selectFoodFromModal(item);
+                    };
+                    resultsList.appendChild(button);
+                });
+            } else {
+                resultsList.innerHTML = '<div class="text-center text-muted p-3">No results found.</div>';
+            }
+        } catch (error) {
+            console.error(error);
+            spinner.style.display = 'none';
+            resultsList.innerHTML = '<div class="text-danger p-3">Error fetching data.</div>';
+        }
+    }
+
+    function selectFoodFromModal(item) {
+        document.getElementById('meal_name').value = item.name;
+        document.getElementById('calories').value = item.calories;
+        document.getElementById('protein').value = item.protein;
+        document.getElementById('carbs').value = item.carbs;
+        document.getElementById('fat').value = item.fat;
+
+        new bootstrap.Collapse(document.getElementById('macroInputs'), { toggle: false }).show();
+
+        const modalEl = document.getElementById('searchModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        modalInstance.hide();
+        
+        searchInput.value = '';
+        resultsList.innerHTML = '';
+    }
+
+    // 5. SMART PRE-FILL & AUTO-FOCUS
+    const searchModal = document.getElementById('searchModal');
+
+    searchModal.addEventListener('show.bs.modal', function () {
+        const mainInput = document.getElementById('meal_name');
+        const modalInput = document.getElementById('api-search-input');
+        
+        if (mainInput.value.trim().length > 0) {
+            modalInput.value = mainInput.value;
+            modalInput.dispatchEvent(new Event('input')); // Trigger search immediately
+        } else {
+            modalInput.value = '';
+            resultsList.innerHTML = '';
+        }
+    });
+
+    searchModal.addEventListener('shown.bs.modal', function () {
+        document.getElementById('api-search-input').focus();
+    });
 </script>
 {% endblock %}
