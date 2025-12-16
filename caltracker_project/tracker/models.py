@@ -40,3 +40,31 @@ class WeightLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.weight_lb} lbs on {self.log_date}"
+
+# 4. EXTENDED FOOD ENTRY WITH MACROS    
+class FoodEntry(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    meal = models.CharField(max_length=100)
+    calories = models.IntegerField()
+    
+    # --- NEW MACRO FIELDS ---
+    protein = models.FloatField(default=0)
+    carbs = models.FloatField(default=0)
+    fat = models.FloatField(default=0)
+    # ------------------------
+    
+    entry_date = models.DateField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.meal} ({self.calories} kcal)"
+    
+class FoodItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+    calories = models.IntegerField()
+    protein = models.FloatField(default=0)
+    carbs = models.FloatField(default=0)
+    fat = models.FloatField(default=0)
+
+    def __str__(self):
+        return self.name

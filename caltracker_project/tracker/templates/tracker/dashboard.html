@@ -59,11 +59,11 @@
                         <button class="btn btn-outline-secondary btn-sm" disabled>Next &raquo;</button>
                     {% endif %}
                 </div>
+
                 <div class="d-flex justify-content-between mb-1">
                     <span class="fw-bold">Daily Progress</span>
                     <span><strong>{{ total_calories }}</strong> / {{ tdee }} kcal</span>
                 </div>
-
                 <div class="progress" style="height: 30px;">
                     <div class="progress-bar 
                         {% if progress_percentage > 100 %}bg-danger progress-bar-striped progress-bar-animated
@@ -73,6 +73,27 @@
                         aria-valuenow="{{ progress_percentage }}" 
                         aria-valuemin="0" aria-valuemax="100">
                         <small>{{ progress_percentage|floatformat:0 }}%</small>
+                    </div>
+                </div>
+
+                <div class="row text-center mt-3 g-1">
+                    <div class="col">
+                        <div class="p-2 border rounded bg-light">
+                            <small class="d-block text-muted">Protein</small>
+                            <span class="fw-bold text-primary">{{ total_protein }}g</span>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-2 border rounded bg-light">
+                            <small class="d-block text-muted">Carbs</small>
+                            <span class="fw-bold text-success">{{ total_carbs }}g</span>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-2 border rounded bg-light">
+                            <small class="d-block text-muted">Fat</small>
+                            <span class="fw-bold text-warning">{{ total_fat }}g</span>
+                        </div>
                     </div>
                 </div>
 
@@ -133,20 +154,70 @@
         <div class="card h-100">
             <div class="card-header bg-primary text-white">Log Meal ({{ current_date|date:"M d" }})</div>
             <div class="card-body">
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">⚡ Quick Add</label>
+                    <select class="form-select form-select-sm" id="quickAddSelect" onchange="fillQuickAdd()">
+                        <option value="">-- Select a Favorite --</option>
+                        {% for item in saved_foods %}
+                        <option value="{{ item.id }}" 
+                                data-name="{{ item.name }}"
+                                data-cal="{{ item.calories }}"
+                                data-prot="{{ item.protein }}"
+                                data-carb="{{ item.carbs }}"
+                                data-fat="{{ item.fat }}">
+                            {{ item.name }} ({{ item.calories }} cal)
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <hr>
+
                 <form method="POST">
                     {% csrf_token %}
                     <input type="hidden" name="action" value="add_food">
-                    <div class="mb-3">
-                        <input type="text" name="meal_name" class="form-control" placeholder="What did you eat?" required>
+                    
+                    <div class="mb-2">
+                        <input type="text" name="meal_name" id="meal_name" class="form-control" placeholder="What did you eat?" required>
                     </div>
-                    <div class="row g-2">
-                        <div class="col-8">
-                            <input type="number" name="calories" class="form-control" placeholder="Calories" required>
-                        </div>
-                        <div class="col-4">
-                            <button type="submit" class="btn btn-success w-100">Add</button>
+                    <div class="mb-2">
+                        <input type="number" name="calories" id="calories" class="form-control" placeholder="Calories" required>
+                    </div>
+
+                    <div class="mb-2">
+                        <button class="btn btn-sm btn-link text-decoration-none p-0" type="button" data-bs-toggle="collapse" data-bs-target="#macroInputs">
+                            🔽 Add Macros (Optional)
+                        </button>
+                    </div>
+
+                    <div class="collapse mb-3" id="macroInputs">
+                        <div class="card card-body bg-light p-2">
+                            <div class="row g-2">
+                                <div class="col-4">
+                                    <label class="small text-muted">Prot (g)</label>
+                                    <input type="number" step="1" name="protein" id="protein" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-4">
+                                    <label class="small text-muted">Carb (g)</label>
+                                    <input type="number" step="1" name="carbs" id="carbs" class="form-control form-control-sm">
+                                </div>
+                                <div class="col-4">
+                                    <label class="small text-muted">Fat (g)</label>
+                                    <input type="number" step="1" name="fat" id="fat" class="form-control form-control-sm">
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="save_favorite" id="saveFav">
+                        <label class="form-check-label small text-muted" for="saveFav">
+                            Save to Favorites list
+                        </label>
+                    </div>
+
+                    <button type="submit" class="btn btn-success w-100">Add Entry</button>
                 </form>
 
                 <hr>
@@ -158,6 +229,13 @@
                         <li class="list-group-item d-flex justify-content-between align-items-center px-0">
                             <span>
                                 <strong>{{ entry.meal }}</strong>
+                                {% if entry.protein or entry.carbs or entry.fat %}
+                                <br><small class="text-muted" style="font-size: 0.75em;">
+                                    Protein:{{ entry.protein|floatformat:0 }} 
+                                    Carbs:{{ entry.carbs|floatformat:0 }} 
+                                    Fat:{{ entry.fat|floatformat:0 }}
+                                </small>
+                                {% endif %}
                             </span>
                             <span>
                                 {{ entry.calories }} 
@@ -227,8 +305,15 @@
                             <option value="Active" {% if profile.activity_level == 'Active' %}selected{% endif %}>Active</option>
                         </select>
                     </div>
-
+                    <hr>
+                    
                     <button type="submit" class="btn btn-primary w-100">Save Changes</button>
+
+                    <h6 class="text-danger mt-2" style="text-align: center;">Danger Zone</h6>
+                    <form action="{% url 'delete_account' %}" method="POST" onsubmit="return confirm('Are you sure? This cannot be undone.');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger w-100">Delete My Account</button>
+                    </form>
                 </form>
             </div>
         </div>
@@ -262,12 +347,42 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } }, // Hide legend to save space
+                plugins: { legend: { display: false } }, 
                 scales: {
                     y: { beginAtZero: false }
                 }
             }
         });
+    }
+
+    function fillQuickAdd() {
+        const select = document.getElementById('quickAddSelect');
+        const selectedOption = select.options[select.selectedIndex];
+
+        // If placeholder is selected, clear fields
+        if (selectedOption.value === "") {
+            document.getElementById('meal_name').value = "";
+            document.getElementById('calories').value = "";
+            document.getElementById('protein').value = "";
+            document.getElementById('carbs').value = "";
+            document.getElementById('fat').value = "";
+            return;
+        }
+
+        // Fill fields using data attributes
+        document.getElementById('meal_name').value = selectedOption.dataset.name;
+        document.getElementById('calories').value = selectedOption.dataset.cal;
+        
+        // Open the macro collapse automatically if it's hidden
+        const macroCollapse = document.getElementById('macroInputs');
+        if (!macroCollapse.classList.contains('show')) {
+            new bootstrap.Collapse(macroCollapse, { toggle: true });
+        }
+
+        // Fill macros
+        document.getElementById('protein').value = selectedOption.dataset.prot;
+        document.getElementById('carbs').value = selectedOption.dataset.carb;
+        document.getElementById('fat').value = selectedOption.dataset.fat;
     }
 </script>
 {% endblock %}

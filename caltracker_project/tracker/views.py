@@ -1,9 +1,11 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
 from django.utils import timezone
 from datetime import datetime, timedelta  # <--- Important Imports
-from .models import FoodEntry, UserProfile, WeightLog
+from .models import FoodEntry, UserProfile, WeightLog, FoodItem
 from .utils import calculate_tdee, get_exercise_recommendation, calculate_bmi
+from .forms import SignUpForm
 
 @login_required
 def dashboard(request):
@@ -32,13 +34,29 @@ def dashboard(request):
         if action == 'add_food':
             meal = request.POST.get('meal_name')
             cals = request.POST.get('calories')
+            prot = request.POST.get('protein') or 0
+            carb = request.POST.get('carbs') or 0
+            fats = request.POST.get('fat') or 0
+            save_fav = request.POST.get('save_favorite')
             if meal and cals:
                 FoodEntry.objects.create(
                     user=user, 
                     meal=meal, 
                     calories=int(cals),
-                    entry_date=current_date  # <--- Save to the viewed date
+                    protein=float(prot),
+                    carbs=float(carb),
+                    fat=float(fats),
+                    entry_date=current_date  # Save to the viewed date
                 )
+            if save_fav:
+                    FoodItem.objects.create(
+                        user=user,
+                        name=meal,
+                        calories=int(cals),
+                        protein=float(prot),
+                        carbs=float(carb),
+                        fat=float(fats)
+                    )
 
         # Action B: Log Weight
         elif action == 'log_weight':
@@ -75,6 +93,9 @@ def dashboard(request):
     food_entries = FoodEntry.objects.filter(user=user).order_by('-id')
     today_entries = food_entries.filter(entry_date=current_date) # Filter for View Date
     total_calories = sum(e.calories for e in today_entries)
+    total_protein = sum(e.protein for e in today_entries)
+    total_carbs = sum(e.carbs for e in today_entries)
+    total_fat = sum(e.fat for e in today_entries)
 
     # B. Profile & Recommendations
     profile, created = UserProfile.objects.get_or_create(user=user)
@@ -119,9 +140,14 @@ def dashboard(request):
         else:
              progress_msg = f"{msg_trend} {abs(to_go):.1f} lbs to goal."
 
+    saved_foods = FoodItem.objects.filter(user=user).order_by('name')
+
     context = {
         'entries': today_entries,       # Showing only entries for the selected date
         'total_calories': total_calories,
+        'total_protein': int(total_protein),
+        'total_carbs': int(total_carbs),
+        'total_fat': int(total_fat),
         'profile': profile,
         'tdee': tdee,
         'bmi': bmi_data,
@@ -132,12 +158,11 @@ def dashboard(request):
         'progress_percentage': progress_percentage,
         'progress_width': progress_width,
         'progress_msg': progress_msg,
-        
-        # Date Navigation Context
         'current_date': current_date,
         'prev_date': prev_date,
         'next_date': next_date,
         'is_today': is_today,
+        'saved_foods': saved_foods,
     }
     return render(request, 'tracker/dashboard.html', context)
 
@@ -151,3 +176,24 @@ def delete_food(request, entry_id):
         entry.delete()
         
     return redirect(f"/tracker/?date={entry_date}")
+
+def register(request):
+    if request.method == 'POST':
+        form = SignUpForm(request.POST) 
+        if form.is_valid():
+            form.save()
+            return redirect('login')
+    else:
+        form = SignUpForm() 
+
+    return render(request, 'registration/register.html', {'form': form})
+
+@login_required
+def delete_account(request):
+    user = request.user
+    if request.method == 'POST':
+        user.delete() # This deletes the User and all cascading data (FoodEntries, etc.)
+        return redirect('login')
+    
+    # Render a confirmation page (optional) or just redirect if triggered by a modal
+    return redirect('dashboard')
