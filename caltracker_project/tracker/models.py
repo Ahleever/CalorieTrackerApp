@@ -20,8 +20,6 @@ class FoodEntry(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     meal = models.CharField(max_length=200)
     calories = models.IntegerField()
-    # default=date.today allows it to be today automatically, 
-    # but lets you override it if you are logging for yesterday.
     entry_date = models.DateField(default=date.today)
 
     def __str__(self):
@@ -34,9 +32,8 @@ class WeightLog(models.Model):
     weight_lb = models.FloatField()
 
     class Meta:
-        # This acts like your SQL: UNIQUE(user_id, log_date)
         unique_together = ('user', 'log_date')
-        ordering = ['-log_date'] # Default to showing newest first
+        ordering = ['-log_date'] 
 
     def __str__(self):
         return f"{self.user.username} - {self.weight_lb} lbs on {self.log_date}"
@@ -46,13 +43,9 @@ class FoodEntry(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     meal = models.CharField(max_length=100)
     calories = models.IntegerField()
-    
-    # --- NEW MACRO FIELDS ---
     protein = models.FloatField(default=0)
     carbs = models.FloatField(default=0)
     fat = models.FloatField(default=0)
-    # ------------------------
-    
     entry_date = models.DateField(auto_now_add=True)
 
     def __str__(self):

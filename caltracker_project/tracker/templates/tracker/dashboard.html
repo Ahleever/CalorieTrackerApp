@@ -45,11 +45,11 @@
                     
                     <form method="GET" class="d-inline-block">
                         <input type="date" 
-                               name="date" 
-                               class="form-control form-control-sm fw-bold text-center border-0 bg-light" 
-                               style="cursor: pointer;"
-                               value="{{ current_date|date:'Y-m-d' }}" 
-                               onchange="this.form.submit()">
+                            name="date" 
+                            class="form-control form-control-sm fw-bold text-center border-0 bg-light" 
+                            style="cursor: pointer;"
+                            value="{{ current_date|date:'Y-m-d' }}" 
+                            onchange="this.form.submit()">
                     </form>
 
                     {% if not is_today %}
@@ -59,39 +59,49 @@
                     {% endif %}
                 </div>
 
-                <div class="d-flex justify-content-between mb-1">
-                    <span class="fw-bold">Daily Progress</span>
-                    <span><strong>{{ total_calories }}</strong> / {{ tdee }} kcal</span>
-                </div>
-                <div class="progress" style="height: 30px;">
-                    <div class="progress-bar 
-                        {% if progress_percentage > 100 %}bg-danger progress-bar-striped progress-bar-animated
-                        {% else %}bg-success{% endif %}" 
-                        role="progressbar" 
-                        style="width: {{ progress_width }}%;" 
-                        aria-valuenow="{{ progress_percentage }}" 
-                        aria-valuemin="0" aria-valuemax="100">
-                        <small>{{ progress_percentage|floatformat:0 }}%</small>
-                    </div>
-                </div>
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="d-flex justify-content-between mb-1">
+                            <span class="fw-bold">Daily Progress</span>
+                            <span><strong>{{ total_calories }}</strong> / {{ tdee }} kcal</span>
+                        </div>
+                        <div class="progress mb-4" style="height: 25px;">
+                            <div class="progress-bar 
+                                {% if progress_percentage > 100 %}bg-danger progress-bar-striped progress-bar-animated
+                                {% else %}bg-success{% endif %}" 
+                                role="progressbar" 
+                                style="width: {{ progress_width }}%;" 
+                                aria-valuenow="{{ progress_percentage }}" 
+                                aria-valuemin="0" aria-valuemax="100">
+                                <small>{{ progress_percentage|floatformat:0 }}%</small>
+                            </div>
+                        </div>
 
-                <div class="row text-center mt-3 g-1">
-                    <div class="col">
-                        <div class="p-2 border rounded bg-light">
-                            <small class="d-block text-muted">Protein</small>
-                            <span class="fw-bold text-primary">{{ total_protein }}g</span>
+                        <div class="row text-center g-1">
+                            <div class="col">
+                                <div class="p-2 border rounded bg-light">
+                                    <small class="d-block text-muted">Protein</small>
+                                    <span class="fw-bold text-primary">{{ total_protein }}g</span>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="p-2 border rounded bg-light">
+                                    <small class="d-block text-muted">Carbs</small>
+                                    <span class="fw-bold text-success">{{ total_carbs }}g</span>
+                                </div>
+                            </div>
+                            <div class="col">
+                                <div class="p-2 border rounded bg-light">
+                                    <small class="d-block text-muted">Fat</small>
+                                    <span class="fw-bold text-warning">{{ total_fat }}g</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="col">
-                        <div class="p-2 border rounded bg-light">
-                            <small class="d-block text-muted">Carbs</small>
-                            <span class="fw-bold text-success">{{ total_carbs }}g</span>
-                        </div>
-                    </div>
-                    <div class="col">
-                        <div class="p-2 border rounded bg-light">
-                            <small class="d-block text-muted">Fat</small>
-                            <span class="fw-bold text-warning">{{ total_fat }}g</span>
+
+                    <div class="col-md-4 text-center">
+                        <div style="height: 140px; width: 140px; margin: 0 auto;">
+                            <canvas id="macroChart"></canvas>
                         </div>
                     </div>
                 </div>
@@ -240,10 +250,18 @@
                                 <strong>{{ entry.meal }}</strong>
                                 <br><small class="text-muted">{{ entry.calories }} kcal</small>
                             </span>
-                            <form action="{% url 'delete_food' entry.id %}" method="POST" class="d-inline">
-                                {% csrf_token %}
-                                <button type="submit" class="btn-close" aria-label="Close"></button>
-                            </form>
+                            
+                            <div>
+                                <button class="btn btn-sm btn-link text-decoration-none p-0 me-2" 
+                                        onclick="openEditModal('{{ entry.id }}', '{{ entry.meal|escapejs }}', '{{ entry.calories }}', '{{ entry.protein }}', '{{ entry.carbs }}', '{{ entry.fat }}')">
+                                    ✏️
+                                </button>
+
+                                <form action="{% url 'delete_food' entry.id %}" method="POST" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-close" aria-label="Close"></button>
+                                </form>
+                            </div>
                         </li>
                         {% empty %}
                         <li class="list-group-item text-muted">No meals yet.</li>
@@ -403,11 +421,56 @@
     </div>
 </div>
 
+<div class="modal fade" id="editFoodModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-warning-subtle">
+                <h5 class="modal-title">✎ Edit Entry</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" id="editFoodForm">
+                    {% csrf_token %}
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Meal Name</label>
+                        <input type="text" name="meal_name" id="edit_meal_name" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Calories</label>
+                        <input type="number" name="calories" id="edit_calories" class="form-control" required>
+                    </div>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <label class="small text-muted">Prot (g)</label>
+                            <input type="number" step="0.1" name="protein" id="edit_protein" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-4">
+                            <label class="small text-muted">Carb (g)</label>
+                            <input type="number" step="0.1" name="carbs" id="edit_carbs" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-4">
+                            <label class="small text-muted">Fat (g)</label>
+                            <input type="number" step="0.1" name="fat" id="edit_fat" class="form-control form-control-sm">
+                        </div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-warning">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
-    // 1. CHART SETUP
+    // CHART SETUP
     const ctx = document.getElementById('weightChart');
     const dates = {{ dates|safe }};   
     const weights = {{ weights|safe }}; 
@@ -437,7 +500,56 @@
         });
     }
 
-    // 2. QUICK ADD LOGIC
+    //  MACRO circle chart
+    const ctxMacro = document.getElementById('macroChart');
+    
+    const p = {{ total_protein|default:0 }};
+    const c = {{ total_carbs|default:0 }};
+    const f = {{ total_fat|default:0 }};
+    
+    if (p + c + f > 0) {
+        new Chart(ctxMacro, {
+            type: 'doughnut',
+            data: {
+                labels: ['Protein', 'Carbs', 'Fat'],
+                datasets: [{
+                    data: [p, c, f],
+                    backgroundColor: [
+                        'rgba(13, 110, 253, 0.8)', 
+                        'rgba(25, 135, 84, 0.8)',  
+                        'rgba(255, 193, 7, 0.8)'   
+                    ],
+                    borderWidth: 0,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }, 
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.label + ': ' + context.raw + 'g';
+                            }
+                        }
+                    }
+                },
+                cutout: '70%', 
+            }
+        });
+    } else {
+        new Chart(ctxMacro, {
+            type: 'doughnut',
+            data: {
+                labels: ['Empty'],
+                datasets: [{ data: [1], backgroundColor: ['#e9ecef'], borderWidth: 0 }]
+            },
+            options: { events: [], plugins: { legend: { display: false }, tooltip: { enabled: false } }, cutout: '70%' }
+        });
+    }
+
     function fillQuickAdd() {
         const select = document.getElementById('quickAddSelect');
         const selectedOption = select.options[select.selectedIndex];
@@ -452,7 +564,6 @@
         new bootstrap.Collapse(document.getElementById('macroInputs'), { toggle: false }).show();
     }
 
-    // 3. PROFILE POPUP CHECK
     {% if not profile.height %}
         document.addEventListener('DOMContentLoaded', function() {
             var myModal = new bootstrap.Modal(document.getElementById('profileModal'));
@@ -460,13 +571,11 @@
         });
     {% endif %}
 
-    // 4. SEARCH API LOGIC
     const searchInput = document.getElementById('api-search-input');
     const resultsList = document.getElementById('api-results-list');
     const spinner = document.getElementById('loading-spinner');
     let debounceTimer;
 
-    // Listen for typing
     searchInput.addEventListener('input', function(e) {
         const query = e.target.value.trim();
         clearTimeout(debounceTimer);
@@ -532,7 +641,7 @@
         resultsList.innerHTML = '';
     }
 
-    // 5. SMART PRE-FILL & AUTO-FOCUS
+    // SMART PRE-FILL & AUTO-FOCUS
     const searchModal = document.getElementById('searchModal');
 
     searchModal.addEventListener('show.bs.modal', function () {
@@ -541,7 +650,7 @@
         
         if (mainInput.value.trim().length > 0) {
             modalInput.value = mainInput.value;
-            modalInput.dispatchEvent(new Event('input')); // Trigger search immediately
+            modalInput.dispatchEvent(new Event('input')); 
         } else {
             modalInput.value = '';
             resultsList.innerHTML = '';
@@ -551,5 +660,19 @@
     searchModal.addEventListener('shown.bs.modal', function () {
         document.getElementById('api-search-input').focus();
     });
+
+    // EDIT MODAL LOGIC
+    function openEditModal(id, name, cals, prot, carb, fat) {
+
+        document.getElementById('edit_meal_name').value = name;
+        document.getElementById('edit_calories').value = cals;
+        document.getElementById('edit_protein').value = prot;
+        document.getElementById('edit_carbs').value = carb;
+        document.getElementById('edit_fat').value = fat;
+        const form = document.getElementById('editFoodForm');
+        form.action = `/edit-food/${id}/`;
+        const myModal = new bootstrap.Modal(document.getElementById('editFoodModal'));
+        myModal.show();
+    }
 </script>
 {% endblock %}
