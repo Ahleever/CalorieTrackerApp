@@ -3,7 +3,6 @@
 def calculate_tdee(profile):
     """Calculates Total Daily Energy Expenditure (TDEE) using the Mifflin-St Jeor equation."""
     
-    # Ensure necessary profile fields exist before calculating
     if not all([profile.age, profile.height, profile.current_weight, profile.sex, profile.activity_level]):
         # Return a safe default if the profile is incomplete
         return 2000 
@@ -68,16 +67,16 @@ def calculate_bmi(profile):
     # Determine Category
     if bmi_value < 18.5:
         category = "Underweight"
-        color = "text-info" # Light Blue
+        color = "text-info" 
     elif 18.5 <= bmi_value < 25:
         category = "Normal Weight"
-        color = "text-success" # Green
+        color = "text-success" 
     elif 25 <= bmi_value < 30:
         category = "Overweight"
-        color = "text-warning" # Yellow/Orange
+        color = "text-warning" 
     else:
         category = "Obese"
-        color = "text-danger" # Red
+        color = "text-danger"
 
     return {
         'value': bmi_value,

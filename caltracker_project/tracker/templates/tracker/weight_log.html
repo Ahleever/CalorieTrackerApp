@@ -64,13 +64,10 @@
 
 {% block extra_js %}
     <script>
-        // Set default date to today
         document.querySelector('input[type="date"]').valueAsDate = new Date();
 
-        // Get the canvas element
         const ctx = document.getElementById('weightChart');
 
-        // Check if we actually have data to draw
         const dates = {{ dates|safe }};   
         const weights = {{ weights|safe }}; 
 
