@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from datetime import date
+from django.utils import timezone
 
 # 1. USER PROFILE
 class UserProfile(models.Model):
@@ -61,3 +62,15 @@ class FoodItem(models.Model):
 
     def __str__(self):
         return self.name
+    
+# 5. WATER INTAKE TRACKING    
+class WaterEntry(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    date = models.DateField(default=timezone.now)
+    glasses = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('user', 'date')  # One entry per user per day
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date}: {self.glasses}"

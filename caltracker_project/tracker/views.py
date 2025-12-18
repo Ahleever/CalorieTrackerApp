@@ -7,8 +7,10 @@ from django.contrib.auth import login
 from django.contrib import messages
 from django.utils import timezone
 from django.urls import reverse
+from django.views.decorators.http import require_POST
+import json
 from datetime import datetime, timedelta  
-from .models import FoodEntry, UserProfile, WeightLog, FoodItem
+from .models import FoodEntry, UserProfile, WeightLog, FoodItem, WaterEntry
 from .utils import calculate_tdee, get_exercise_recommendation, calculate_bmi
 from .forms import SignUpForm
 
@@ -156,6 +158,12 @@ def dashboard(request):
         display_ft = ''
         display_in = ''
 
+    water_entry, created = WaterEntry.objects.get_or_create(
+        user=request.user, 
+        date=current_date,
+        defaults={'glasses': 0}
+    )
+
     context = {
         'entries': today_entries,       
         'total_calories': total_calories,
@@ -179,6 +187,7 @@ def dashboard(request):
         'saved_foods': saved_foods,
         'display_ft': display_ft, 
         'display_in': display_in,
+        'water_glasses': water_entry.glasses,
     }
     return render(request, 'tracker/dashboard.html', context)
 
@@ -303,3 +312,59 @@ def search_openfoodfacts(request):
     except Exception as e:
         print(f"API Error: {e}") # Print error to terminal instead of crashing
         return JsonResponse({'error': 'Search failed'}, status=500)
+    
+    # tracker/views.py
+
+def get_weather(request):
+    lat = request.GET.get('lat')
+    lon = request.GET.get('lon')
+    api_key = "827f7dcedaccfb16c68ec0eb18a2a5a3"
+    
+    if not lat or not lon:
+        return JsonResponse({'error': 'Missing coordinates'}, status=400)
+
+    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=imperial"
+    
+    try:
+        response = requests.get(url)
+        data = response.json()
+        print(f"Weather API Response: {data}") 
+        
+        if response.status_code != 200:
+            return JsonResponse({'error': data.get('message', 'API Error')}, status=response.status_code)
+        
+        weather_data = {
+            'city': data.get('name'),
+            'temp': round(data['main']['temp']),
+            'description': data['weather'][0]['description'].title(),
+            'icon': data['weather'][0]['icon']
+        }
+        return JsonResponse(weather_data)
+        
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
+@login_required
+@require_POST
+def update_water(request):
+    try:
+        data = json.loads(request.body)
+        action = data.get('action')
+        date_str = data.get('date')
+        
+        # Get the entry
+        entry, created = WaterEntry.objects.get_or_create(
+            user=request.user, 
+            date=date_str
+        )
+        
+        if action == 'add':
+            entry.glasses += 1
+        elif action == 'remove' and entry.glasses > 0:
+            entry.glasses -= 1
+            
+        entry.save()
+        return JsonResponse({'success': True, 'new_count': entry.glasses})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
