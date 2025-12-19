@@ -412,7 +412,6 @@
 
 {% block extra_js %}
 <script>
-    // CHART SETUP
     const ctx = document.getElementById('weightChart');
     const dates = {{ dates|safe }};   
     const weights = {{ weights|safe }}; 
@@ -533,7 +532,7 @@
 
     async function fetchFood(query) {
         try {
-            const response = await fetch(`/api/search-food/?q=${encodeURIComponent(query)}`);
+            const response = await fetch(`/api/search-food/?query=${encodeURIComponent(query)}`);
             const data = await response.json();
             
             spinner.style.display = 'none';

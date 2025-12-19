@@ -1,4 +1,5 @@
 import requests
+import json
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
@@ -8,7 +9,7 @@ from django.contrib import messages
 from django.utils import timezone
 from django.urls import reverse
 from django.views.decorators.http import require_POST
-import json
+from .services import FoodAPI, WeatherAPI
 from datetime import datetime, timedelta  
 from .models import FoodEntry, UserProfile, WeightLog, FoodItem, WaterEntry
 from .utils import calculate_tdee, get_exercise_recommendation, calculate_bmi
@@ -261,88 +262,25 @@ def register(request):
 
 
 
-def search_openfoodfacts(request):
-    query = request.GET.get('q', '')
-    if not query:
-        return JsonResponse({'products': []})
-
-    url = f"https://world.openfoodfacts.org/cgi/search.pl?search_terms={query}&search_simple=1&action=process&json=1&page_size=5"
+def search_food(request):
+    query = request.GET.get('query', '')
     
-    try:
-        response = requests.get(url, headers={'User-Agent': 'CalTrack/1.0'})
-        if response.status_code != 200:
-            return JsonResponse({'products': []})
-            
-        data = response.json()
-        
-        results = []
-        for product in data.get('products', []):
-            nutriments = product.get('nutriments', {})
-
-            # Safely get numbers 
-            def get_val(keys):
-                """Try multiple keys, safely convert to float, return 0 on failure"""
-                for key in keys:
-                    val = nutriments.get(key)
-                    try:
-                        if val is not None:
-                            return float(val)
-                    except (ValueError, TypeError):
-                        continue 
-                return 0.0
-
-            cals = get_val(['energy-kcal_serving', 'energy-kcal_100g', 'energy-kcal'])
-            prot = get_val(['proteins_serving', 'proteins_100g', 'proteins'])
-            carbs = get_val(['carbohydrates_serving', 'carbohydrates_100g', 'carbohydrates'])
-            fat = get_val(['fat_serving', 'fat_100g', 'fat'])
-
-            item = {
-                'name': product.get('product_name', 'Unknown'),
-                'brand': product.get('brands', ''),
-                'calories': int(cals), 
-                'protein': round(prot, 1),
-                'carbs': round(carbs, 1),
-                'fat': round(fat, 1),
-                'serving_size': product.get('serving_size', '100g')
-            }
-            results.append(item)
-            
+    if query:
+        api = FoodAPI() 
+        results = api.search_kcal_per_100g(query)
         return JsonResponse({'products': results})
-        
-    except Exception as e:
-        print(f"API Error: {e}") # Print error to terminal instead of crashing
-        return JsonResponse({'error': 'Search failed'}, status=500)
     
-    # tracker/views.py
+    return JsonResponse({'products': []})
 
 def get_weather(request):
     lat = request.GET.get('lat')
     lon = request.GET.get('lon')
-    api_key = "827f7dcedaccfb16c68ec0eb18a2a5a3"
-    
-    if not lat or not lon:
-        return JsonResponse({'error': 'Missing coordinates'}, status=400)
-
-    url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={api_key}&units=imperial"
-    
-    try:
-        response = requests.get(url)
-        data = response.json()
-        print(f"Weather API Response: {data}") 
-        
-        if response.status_code != 200:
-            return JsonResponse({'error': data.get('message', 'API Error')}, status=response.status_code)
-        
-        weather_data = {
-            'city': data.get('name'),
-            'temp': round(data['main']['temp']),
-            'description': data['weather'][0]['description'].title(),
-            'icon': data['weather'][0]['icon']
-        }
+    weather_service = WeatherAPI()
+    weather_data = weather_service.get_current_weather(lat, lon)
+    if weather_data:
         return JsonResponse(weather_data)
-        
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+    else:
+        return JsonResponse({'error': 'Could not fetch weather'}, status=500)
     
 @login_required
 @require_POST
@@ -351,8 +289,6 @@ def update_water(request):
         data = json.loads(request.body)
         action = data.get('action')
         date_str = data.get('date')
-        
-        # Get the entry
         entry, created = WaterEntry.objects.get_or_create(
             user=request.user, 
             date=date_str
