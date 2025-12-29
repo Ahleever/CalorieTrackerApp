@@ -61,7 +61,7 @@ class TrackerAuthTests(TestCase):
     def test_logout(self):
         """Test logout functionality."""
         self.client.login(username='testuser', password='password123')
-        response = self.client.post(self.logout_url)  # Assuming logout is a POST action
+        response = self.client.post(self.logout_url) 
         
         # Check if we can no longer access dashboard
         response = self.client.get(self.dashboard_url)
